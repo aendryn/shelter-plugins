@@ -160,12 +160,17 @@ else break;
 		});
 	}
 	function findAccountButtons() {
+		let found = null;
 		for (const b of document.querySelectorAll("[class*=\"buttons_\"]")) {
 			if (b.querySelectorAll("button").length < 3) continue;
 			if (b.closest("[data-list-id^=\"chat-messages\"]")) continue;
 			let p = b.parentElement;
-			for (let i = 0; i < 4 && p && p !== document.body; i++, p = p.parentElement) if (p.querySelector("[class*=\"avatar\"]") && p.querySelectorAll("[class*=\"buttons_\"]").length === 1) return b;
+			for (let i = 0; i < 4 && p && p !== document.body; i++, p = p.parentElement) if (p.querySelector("[class*=\"avatar\"]") && !p.querySelector("[data-list-id^=\"chat-messages\"]")) {
+				found = b;
+				break;
+			}
 		}
+		if (found) return found;
 		const mute = document.querySelector("[aria-label=\"Mute\"], [aria-label=\"Unmute\"]");
 		return mute?.closest("[class*=\"buttons_\"]") ?? null;
 	}
