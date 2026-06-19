@@ -4,8 +4,9 @@
 
 //#region plugins/GameActivityHider/index.js
 (() => {
-	let injectedButton = null;
-	const { flux: { storesFlat }, plugin: { scoped } } = shelter;
+	const { flux: { storesFlat }, plugin: { scoped }, solid, ui } = shelter;
+	let localEnabled = true;
+	let disposeTooltip;
 	function getShowCurrentGame() {
 		try {
 			const v = storesFlat["UserSettingsProtoStore"]?.settings?.status?.showCurrentGame?.value;
@@ -115,7 +116,6 @@ else break;
 			body: { settings: patchBlob(blob, value) }
 		}).catch(() => {});
 	}
-	let localEnabled = getShowCurrentGame();
 	function applyState(btn, inner, enabled) {
 		btn.setAttribute("aria-checked", String(!enabled));
 		btn.setAttribute("aria-label", enabled ? "Disable Game Activity" : "Enable Game Activity");
@@ -135,16 +135,16 @@ else break;
             </mask></defs>`}
         </svg>`;
 	}
-	function injectButton(buttonsEl) {
+	function injectButton(buttonsEl, muteBtn) {
 		if (document.getElementById("gat-btn")) return;
-		const settingsBtn = buttonsEl.querySelector("[aria-label=\"User Settings\"]");
+		const refBtn = buttonsEl.querySelector("[aria-label=\"User Settings\"]") ?? muteBtn;
 		const btn = document.createElement("button");
 		btn.id = "gat-btn";
 		btn.type = "button";
 		btn.setAttribute("role", "switch");
-		btn.className = settingsBtn?.className ?? "";
+		btn.className = refBtn?.className ?? "";
 		const inner = document.createElement("div");
-		inner.className = settingsBtn?.querySelector("[class*=\"contents_\"]")?.className ?? "";
+		inner.className = refBtn?.querySelector("[class*=\"contents_\"]")?.className ?? "";
 		btn.appendChild(inner);
 		applyState(btn, inner, localEnabled);
 		btn.onclick = () => {
@@ -153,34 +153,49 @@ else break;
 			setShowCurrentGame(localEnabled);
 		};
 		buttonsEl.prepend(btn);
-		injectedButton = btn;
+		disposeTooltip?.();
+		solid.createRoot((dispose) => {
+			disposeTooltip = dispose;
+			ui.tooltip(btn, () => localEnabled ? "Disable Game Activity" : "Enable Game Activity");
+		});
 	}
-	const styleEl = document.createElement("style");
-	styleEl.textContent = `
-        #gat-btn.gat-disabled { color: var(--status-danger) !important; }
-        #gat-btn [class*="contents_"] { display: flex; align-items: center; justify-content: center; }
-    `;
-	document.head.appendChild(styleEl);
+	function findAccountButtons() {
+		for (const b of document.querySelectorAll("[class*=\"buttons_\"]")) {
+			if (b.querySelectorAll("button").length < 3) continue;
+			if (b.closest("[data-list-id^=\"chat-messages\"]")) continue;
+			let p = b.parentElement;
+			for (let i = 0; i < 4 && p && p !== document.body; i++, p = p.parentElement) if (p.querySelector("[class*=\"avatar\"]") && p.querySelectorAll("[class*=\"buttons_\"]").length === 1) return b;
+		}
+		const mute = document.querySelector("[aria-label=\"Mute\"], [aria-label=\"Unmute\"]");
+		return mute?.closest("[class*=\"buttons_\"]") ?? null;
+	}
 	function tryInject() {
-		const muteBtn = document.querySelector("[aria-label=\"Mute\"], [aria-label=\"Unmute\"]");
-		const buttonsEl = muteBtn?.closest("[class*=\"buttons_\"]");
-		if (buttonsEl) injectButton(buttonsEl);
+		const b = findAccountButtons();
+		if (b) injectButton(b, b.querySelector("button"));
 	}
-	tryInject();
-	scoped.observeDom("[aria-label=\"Mute\"]:not([data-gat]), [aria-label=\"Unmute\"]:not([data-gat])", (el) => {
-		el.dataset.gat = "1";
-		const buttonsEl = el.closest("[class*=\"buttons_\"]");
-		if (buttonsEl) injectButton(buttonsEl);
-	});
-	scoped.flux.subscribe("CONNECTION_OPEN", () => {
-		localEnabled = getShowCurrentGame();
-		tryInject();
-	});
-	return { onUnload() {
-		injectedButton?.remove();
-		styleEl.remove();
-		document.querySelectorAll("[data-gat]").forEach((el) => delete el.dataset.gat);
-	} };
+	return {
+		onLoad() {
+			scoped.ui.injectCss(`
+                #gat-btn.gat-disabled { color: var(--status-danger) !important; }
+                #gat-btn [class*="contents_"] { display: flex; align-items: center; justify-content: center; }
+            `);
+			localEnabled = getShowCurrentGame();
+			tryInject();
+			scoped.observeDom("[class*=\"buttons_\"]", () => {
+				if (!document.getElementById("gat-btn")) tryInject();
+			});
+			scoped.flux.subscribe("CONNECTION_OPEN", () => {
+				localEnabled = getShowCurrentGame();
+				const btn = document.getElementById("gat-btn");
+				if (btn) applyState(btn, btn.firstElementChild, localEnabled);
+else tryInject();
+			});
+		},
+		onUnload() {
+			disposeTooltip?.();
+			document.getElementById("gat-btn")?.remove();
+		}
+	};
 })();
 
 //#endregion
