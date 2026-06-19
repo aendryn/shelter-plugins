@@ -2,7 +2,7 @@
     let injectedButton = null;
 
     function readAll() {
-        const { GuildStore, GuildChannelStore, ActiveJoinedThreadsStore, ReadStateStore } = shelter.flux.storesFlat;
+        const { GuildStore, GuildChannelStore, ActiveJoinedThreadsStore, ReadStateStore, GuildScheduledEventStore } = shelter.flux.storesFlat;
 
         const channels = [];
 
@@ -21,6 +21,17 @@
                               readStateType: 0
                 });
             });
+
+            const events = GuildScheduledEventStore.getGuildScheduledEventsForGuild(guild.id);
+            if (events?.length) {
+                const newest = events.reduce((a, b) => BigInt(a.id) > BigInt(b.id) ? a : b);
+                shelter.flux.dispatcher.dispatch({
+                    type: "GUILD_FEATURE_ACK",
+                    id: guild.id,
+                    ackType: 1,
+                    ackedId: newest.id
+                });
+            }
         });
 
         shelter.flux.dispatcher.dispatch({
